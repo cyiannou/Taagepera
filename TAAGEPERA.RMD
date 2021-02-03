@@ -1,0 +1,91 @@
+---
+title: "<center>Re-analysis of the Taagepera data</center>"
+author: "<center>Constantin T Yiannoutsos</center>"
+date: "<center>2/2/2021</center>"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Back story
+So back in 1972, Rein Taagepera, an Estonian political scientist, published a paper in the journal Social Science Research, which made the claim that there is a linear relationship between the size of a country's population and the size of its national assembly (κοινοβούλιο).  Taagepera introduced a cube-root formula, to link the size of the population (henceforth $P_0$) with the size of the national assemblies ($A$).  This has become sort of dogma since then, and people have used this to assert that this "law" has to do with the optimal size of an assembly. This, mind you, is not based on the actual analysis by Taagepera, but rather on some heuristic arguments about the level of contact between assemblymen and their consituents.  Recently, Giorgio Mararitondo, a physicist at the Faculté des Sciences de Base, Ecole Polytechnique Fédérale de Lausanne, reanalyzed Taagepera's paper (_Frontiers in Physics_, 2021) and concluded that the better equation involves a square-root rather than a cube-root relationship. Luckily, Taagepera included the data in his paper, so we can find out by ourselves whose argument is correct.
+
+## The data
+Here are the data from the Taagepera paper (_Soc Sci Res_, 1972). 
+```{r data}
+taagepera<-read.csv("h:/research/yiannoutsos/parliaments/data/taagepera.csv")
+head(taagepera)
+```
+## Exploratory data analysis
+
+Now let's see why Taagepera chose the log transformation. Here is a histogram of the assembly size _A_ in the data above:
+```{r}
+hist(taagepera$A, xlab="Assembly size", main="")
+```
+
+So they realized that the assembly size is skewed to the right, so not good news for regression analysis, so they took the log transformation.  Will that work better? Let's see (recall that we would like to have something like a normally distributed outcome, or at least not too assymetrical for traditional least-squares regression to work).
+```{r}
+hist(log(taagepera$A), xlab="Assembly size (log-transformed)", main="")
+```
+So obviously the log transformation worked to some extent. Is this the best transformation possible? 
+
+## Optimal data transformation
+Let's do a Box-Cox analysis to find the optimal transformation
+```{r, warning=FALSE, message=FALSE}
+library(car)
+boxCox(taagepera$A~taagepera$P_0, data=taagepera)
+```
+
+The Box-Cox transformation considers transformations of the following family
+$$
+f(y)=\left\{
+\begin{array}{ll}
+\frac{y^\lambda-1}{\lambda},\mbox{ if } \lambda \neq 0\\
+\log(y),\mbox{ if }\lambda=0
+\end{array}
+\right .
+$$
+where $y$ are the data we want to make as closely distributed to the normal distribution as possible, and $\lambda$ is a tuning parameter.  Without going into the details too much, the above plot shows that the 95% confidence interval for the (unknown) $\lambda$ contains zero, so the logarithmic transformation of the (assembly size) data considered by Taagepera is reasonable; so far so good.
+
+## Exploratory data analysis
+Now let's see a scatter plot of the assembly size _A_ versus population size $P_0$ (note that Taagepera uses log-base-10 and also transforms the population size to minimize the effect of China's population size in the analysis; using natural log versus log-base-10 is a minor detail):
+```{r}
+plot(log10(A)~log10(P_0), data=taagepera, xlab="log-population size", ylab="log assembly size")
+arrows(log10(taagepera$P_0[taagepera$Country=="Greece"])-.5, log10(taagepera$A[taagepera$Country=="Greece"])+.5,
+       log10(taagepera$P_0[taagepera$Country=="Greece"]),log10(taagepera$A[taagepera$Country=="Greece"]))
+text(log10(taagepera$P_0[taagepera$Country=="Greece"])-.6, log10(taagepera$A[taagepera$Country=="Greece"])+.6, "Greece")
+```
+
+The above plot is essentially equivalent to Taagepera's Figure 1.  This shows a strong positive correlation between population size and assembly size (i.e., countries with larger population size tend to have larger national assemblies).  In fact the Spearman correlation is equal to $r=`r format(cor(taagepera$A, taagepera$P_0,method = "spearman"), digits=2)`$.
+
+## Optimal fit
+Taagepera goes on to determine that the optimal fit of the model follows the expression 
+$$
+A=aP_0^n
+$$
+his equation (2). This, translates in the log-base-10 scale to 
+$$
+\log_{10}A=\log_{10}a+n\log_{10}P_0
+$$
+which in turn can be recognized as one of the form
+$$
+f(x)=a+bx
+$$
+with $f(x)=\log_{10}A$, $x=P_0$, $a=\log_{10}a$ and $b=n$. So this is a linear equation in $P_0$, and the factors $a$ and $b$ can be estimated by least-squares regression (which should be valid given that we have fairly normally distributed data in $\log_{10}A$ as suggested  by the histogram in the second figure above).
+
+This can be readily done as follows:
+```{r}
+summary(lm(log10(A)~log10(P_0), data=taagepera))
+```
+This means that the optimal fit of Taagepera's data is of the form
+$$
+\log_{10}A=\log_{10}1.7253+0.4555\log_{10}P_0
+$$
+which of course translates (by raising 10 to the powers in either side of the equal sign)
+$$
+A=1.7253 P_0^{0.4555}
+$$
+which is a lot closer to a function involving $\sqrt{P_0}$, as suggested by Margaritondo (_Frontiers in Physics_, 2021) than the cube root of $P_0$ as suggested by Taagepera.  In fact the estimate $\hat n=0.4555$ is _exactly_ the estimate reported by Margaritondo (as is _exactly_ the standard deviation $\sigma=0.03159$ of the estimate as suggested by Margaritondo).
+
+Why it has taken 50+ years for someone to say something like this, when one can take the Taagepera data and analyze them in 5 minutes, is beyond me!
